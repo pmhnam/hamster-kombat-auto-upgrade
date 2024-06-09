@@ -1,0 +1,16 @@
+{
+  "name": "hamsterupgrades",
+  "version": "1.0.0",
+  "description": "Hamster Upgrades Dan Cay",
+  "main": "hamsterupgrades.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Cao Bang",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^0.21.1",
+    "https-proxy-agent": "^5.0.0",
+    "readline": "^1.3.0"
+  }
+}
