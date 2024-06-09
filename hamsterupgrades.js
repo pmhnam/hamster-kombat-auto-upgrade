@@ -9,20 +9,27 @@ const dieukien = 100000;
 const csvDataProxy = fs.readFileSync('proxy.csv', 'utf8');
 const proxyList = csvDataProxy.split('\n').map(line => line.trim()).filter(line => line !== '');
 
+// Update here if you want to use proxy
+const USE_PROXY = false;
+
 function createAxiosInstance(proxy) {
-    // const proxyAgent = new HttpsProxyAgent(proxy);
+    const proxyAgent = USE_PROXY ? new HttpsProxyAgent(proxy) : null;
     return axios.create({
         baseURL: 'https://api.hamsterkombat.io',
         timeout: 10000,
         headers: {
             'Content-Type': 'application/json'
         },
-        // httpsAgent: proxyAgent
+        ...(USE_PROXY && { httpsAgent: proxyAgent })
     });
 }
 
 async function checkProxyIP(proxy) {
     try {
+        if (!USE_PROXY) {
+            console.log('Dont use proxy');
+            return true;
+        };
         const proxyAgent = new HttpsProxyAgent(proxy);
         const response = await axios.get('https://api.ipify.org?format=json', {
             httpsAgent: proxyAgent
@@ -144,7 +151,7 @@ async function claimDailyCipher(dancay, authorization, cipher) {
 
 async function runForAuthorization(authorization, proxy, cipher) {
     const dancay = createAxiosInstance();
-    // await checkProxyIP(proxy);
+    await checkProxyIP(proxy);
 
     await claimDailyCipher(dancay, authorization, cipher);
 
@@ -175,7 +182,7 @@ async function main() {
     while (true) {
         for (let i = 0; i < authorizationList.length; i++) {
             const authorization = authorizationList[i];
-            const proxy = proxyList[i % proxyList.length];
+            const proxy = USE_PROXY ? proxyList[i % proxyList.length] : null;
             await runForAuthorization(authorization, proxy, cipher);
         }
         console.log('Đã chạy xong tất cả các token. Chờ 30 phút chạy lại...');
