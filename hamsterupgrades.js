@@ -5,18 +5,19 @@ const readline = require('readline');
 
 const csvDataAuth = fs.readFileSync('authorization.csv', 'utf8');
 const authorizationList = csvDataAuth.split('\n').map(line => line.trim()).filter(line => line !== '');
-const dieukien = 100000;
 const csvDataProxy = fs.readFileSync('proxy.csv', 'utf8');
 const proxyList = csvDataProxy.split('\n').map(line => line.trim()).filter(line => line !== '');
 
 // Update here if you want to use proxy
 const USE_PROXY = false;
+const MAX_AMOUNT = 1000000;
+
 
 function createAxiosInstance(proxy) {
     const proxyAgent = USE_PROXY ? new HttpsProxyAgent(proxy) : null;
     return axios.create({
         baseURL: 'https://api.hamsterkombat.io',
-        timeout: 10000,
+        timeout: 60 * 1000,
         headers: {
             'Content-Type': 'application/json'
         },
@@ -44,9 +45,15 @@ async function checkProxyIP(proxy) {
     }
 }
 
-async function getBalanceCoins(dancay, authorization) {
+async function sleep(ms) {
+    const time = ms || Math.random() * 1000; // Random time sleep between 0 - 1s
+    console.log('Sleep', time, 'ms...');
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function getBalanceCoins(axiosInstance, authorization) {
     try {
-        const response = await dancay.post('/clicker/sync', {}, {
+        const response = await axiosInstance.post('/clicker/sync', {}, {
             headers: {
                 'Authorization': `Bearer ${authorization}`
             }
@@ -55,7 +62,7 @@ async function getBalanceCoins(dancay, authorization) {
         if (response.status === 200) {
             return response.data.clickerUser.balanceCoins;
         } else {
-            console.error('Không lấy được thông tin balanceCoins. Status code:', response.status);
+            console.error(`Get balance coins failed. Status code:`, response.status);
             return null;
         }
     } catch (error) {
@@ -64,9 +71,9 @@ async function getBalanceCoins(dancay, authorization) {
     }
 }
 
-async function buyUpgrades(dancay, authorization) {
+async function buyUpgrades(axiosInstance, authorization) {
     try {
-        const upgradesResponse = await dancay.post('/clicker/upgrades-for-buy', {}, {
+        const upgradesResponse = await axiosInstance.post('/clicker/upgrades-for-buy', {}, {
             headers: {
                 'Authorization': `Bearer ${authorization}`
             }
@@ -74,34 +81,35 @@ async function buyUpgrades(dancay, authorization) {
 
         if (upgradesResponse.status === 200) {
             const upgrades = upgradesResponse.data.upgradesForBuy;
-            let balanceCoins = await getBalanceCoins(dancay, authorization);
+            let balanceCoins = await getBalanceCoins(axiosInstance, authorization);
             let purchased = false;
 
             for (const upgrade of upgrades) {
                 if (upgrade.cooldownSeconds > 0) {
-                    console.log(`Thẻ ${upgrade.name} đang trong thời gian cooldown ${upgrade.cooldownSeconds} giây.`);
+                    console.log(`Card ${upgrade.name} in cool down for ${upgrade.cooldownSeconds} seconds.`);
                     continue;
                 }
 
-                if (upgrade.isAvailable && !upgrade.isExpired && upgrade.price < dieukien && upgrade.price <= balanceCoins) {
+                if (upgrade.isAvailable && !upgrade.isExpired && upgrade.price < MAX_AMOUNT && upgrade.price <= balanceCoins) {
                     const buyUpgradePayload = {
                         upgradeId: upgrade.id,
-                        timestamp: Math.floor(Date.now() / 1000)
+                        timestamp: Date.now() / 1000
                     };
                     try {
-                        const response = await dancay.post('/clicker/buy-upgrade', buyUpgradePayload, {
+                        await sleep(1000);
+                        const response = await axiosInstance.post('/clicker/buy-upgrade', buyUpgradePayload, {
                             headers: {
                                 'Authorization': `Bearer ${authorization}`
                             }
                         });
                         if (response.status === 200) {
-                            console.log(`(${Math.floor(balanceCoins)}) Đã nâng cấp thẻ ${upgrade.name} cho token ${authorization}.`);
+                            console.log(`(${Math.floor(balanceCoins)}) upgraded '${upgrade.name}' successfully.\n`);
                             purchased = true;
                             balanceCoins -= upgrade.price;
                         }
                     } catch (error) {
                         if (error.response && error.response.data && error.response.data.error_code === 'UPGRADE_COOLDOWN') {
-                            console.log(`Thẻ ${upgrade.name} đang trong thời gian cooldown ${error.response.data.cooldownSeconds} giây.`);
+                            console.log(`Card ${upgrade.name} in cool down for ${error.response.data.cooldownSeconds} seconds.`);
                             continue;
                         } else {
                             throw error;
@@ -112,51 +120,49 @@ async function buyUpgrades(dancay, authorization) {
             }
 
             if (!purchased) {
-                console.log(`Token ${authorization.substring(0, 10)}... không có thẻ nào khả dụng hoặc đủ điều kiện. Chuyển token tiếp theo...`);
+                console.log(`Token ${authorization.substring(0, 10)}... does not have available cards to upgrade. Try again...`);
                 return false;
             }
         } else {
-            console.error('Không lấy được danh sách thẻ. Status code:', upgradesResponse.status);
+            console.error('Can not get cards . Status code:', upgradesResponse.status);
             return false;
         }
     } catch (error) {
-        console.error('Lỗi không mong muốn, chuyển token tiếp theo', error);
+        console.error('Error:', error);
         return false;
     }
     return true;
 }
 
-async function claimDailyCipher(dancay, authorization, cipher) {
+async function claimDailyCipher(axiosInstance, authorization, cipher) {
     if (cipher) {
         try {
             const payload = {
                 cipher: cipher
             };
-            const response = await dancay.post('/clicker/claim-daily-cipher', payload, {
+            const response = await axiosInstance.post('/clicker/claim-daily-cipher', payload, {
                 headers: {
                     'Authorization': `Bearer ${authorization}`
                 }
             });
 
             if (response.status === 200) {
-                console.log(`Đã claim daily cipher với mã ${cipher} cho token ${authorization}`);
+                console.log(`Claimed '${cipher}' successfully.`);
             } else {
-                console.error('Không claim được daily cipher. Status code:', response.status);
+                console.error('Can not claim cipher. Status code:', response.status);
             }
         } catch (error) {
-            console.error('Mã morse đã được giải');
+            console.error('Morse code was invalid. Error:', error);
         }
     }
 }
 
 async function runForAuthorization(authorization, proxy, cipher) {
-    const dancay = createAxiosInstance();
+    const axios = createAxiosInstance();
     await checkProxyIP(proxy);
-
-    await claimDailyCipher(dancay, authorization, cipher);
-
+    await claimDailyCipher(axios, authorization, cipher);
     while (true) {
-        const success = await buyUpgrades(dancay, authorization);
+        const success = await buyUpgrades(axios, authorization);
         if (!success) {
             break;
         }
@@ -170,7 +176,7 @@ async function askForCipher() {
     });
 
     return new Promise(resolve => {
-        rl.question('Mã morse hôm nay cần giải: ', (answer) => {
+        rl.question('Enter cipher: ', (answer) => {
             rl.close();
             resolve(answer.trim());
         });
@@ -185,9 +191,56 @@ async function main() {
             const proxy = USE_PROXY ? proxyList[i % proxyList.length] : null;
             await runForAuthorization(authorization, proxy, cipher);
         }
-        console.log('Đã chạy xong tất cả các token. Chờ 30 phút chạy lại...');
-        await new Promise(resolve => setTimeout(resolve, 1000 * 60 * 30));
+        console.log('Sleep 10 minutes...');
+        await new Promise(resolve => setTimeout(resolve, 1000 * 60 * 10));
     }
 }
 
 main();
+
+
+
+
+
+
+// fetch("https://api.hamsterkombat.io/clicker/upgrades-for-buy", {
+//     "headers": {
+//         "accept": "*/*",
+//         "accept-language": "vi,en;q=0.9,en-GB;q=0.8,en-US;q=0.7",
+//         "authorization": "Bearer 1717860303477QYWihTFFSkNnsHqVsXJeXt0BIyvobzbkGcxksz57golz8WY2Ezb2KqFTbnM0Bcgr5467596172",
+//         "sec-ch-ua": "\"Microsoft Edge\";v=\"125\", \"Chromium\";v=\"125\", \"Not.A/Brand\";v=\"24\"",
+//         "sec-ch-ua-mobile": "?0",
+//         "sec-ch-ua-platform": "\"Windows\"",
+//         "sec-fetch-dest": "empty",
+//         "sec-fetch-mode": "cors",
+//         "sec-fetch-site": "same-site",
+//         "sec-gpc": "1",
+//         "Referer": "https://hamsterkombat.io/",
+//         "Referrer-Policy": "strict-origin-when-cross-origin"
+//     },
+//     "body": null,
+//     "method": "POST"
+// });
+
+
+
+
+// fetch("https://api.hamsterkombat.io/clicker/buy-upgrade", {
+//     "headers": {
+//         "accept": "application/json",
+//         "accept-language": "vi,en;q=0.9,en-GB;q=0.8,en-US;q=0.7",
+//         "authorization": "Bearer 1717860303477QYWihTFFSkNnsHqVsXJeXt0BIyvobzbkGcxksz57golz8WY2Ezb2KqFTbnM0Bcgr5467596172",
+//         "content-type": "application/json",
+//         "sec-ch-ua": "\"Microsoft Edge\";v=\"125\", \"Chromium\";v=\"125\", \"Not.A/Brand\";v=\"24\"",
+//         "sec-ch-ua-mobile": "?0",
+//         "sec-ch-ua-platform": "\"Windows\"",
+//         "sec-fetch-dest": "empty",
+//         "sec-fetch-mode": "cors",
+//         "sec-fetch-site": "same-site",
+//         "sec-gpc": "1",
+//         "Referer": "https://hamsterkombat.io/",
+//         "Referrer-Policy": "strict-origin-when-cross-origin"
+//     },
+//     "body": "{\"upgradeId\":\"gamefi_tokens\",\"timestamp\":1718368570410}",
+//     "method": "POST"
+// });
