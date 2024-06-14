@@ -12,6 +12,13 @@ const proxyList = csvDataProxy.split('\n').map(line => line.trim()).filter(line 
 const USE_PROXY = false;
 const MAX_AMOUNT = 1000000;
 
+let Reset = "\x1b[0m%s";
+let FgRed = "\x1b[31m%s\x1b[0m";
+let FgGreen = "\x1b[32m%s\x1b[0m";
+let FgYellow = "\x1b[33m%s\x1b[0m";
+let FgBlue = "\x1b[34m%s\x1b[0m";
+let FgMagenta = "\x1b[35m%s\x1b[0m";
+
 
 function createAxiosInstance(proxy) {
     const proxyAgent = USE_PROXY ? new HttpsProxyAgent(proxy) : null;
@@ -28,7 +35,7 @@ function createAxiosInstance(proxy) {
 async function checkProxyIP(proxy) {
     try {
         if (!USE_PROXY) {
-            console.log('Dont use proxy');
+            console.log(FgBlue, 'Dont use proxy');
             return true;
         };
         const proxyAgent = new HttpsProxyAgent(proxy);
@@ -36,18 +43,18 @@ async function checkProxyIP(proxy) {
             httpsAgent: proxyAgent
         });
         if (response.status === 200) {
-            console.log('Địa chỉ IP của proxy là:', response.data.ip);
+            console.log(FgBlue, 'Địa chỉ IP của proxy là:', response.data.ip);
         } else {
-            console.error('Không thể kiểm tra IP của proxy. Status code:', response.status);
+            console.error(FgGreen, 'Không thể kiểm tra IP của proxy. Status code:', response.status);
         }
     } catch (error) {
-        console.error('Error khi kiểm tra IP của proxy:', error);
+        console.error(FgRed, 'Error khi kiểm tra IP của proxy:', error);
     }
 }
 
 async function sleep(ms) {
     const time = ms || Math.random() * 1000; // Random time sleep between 0 - 1s
-    console.log('Sleep', time, 'ms...');
+    console.log(FgBlue, `Sleep ${time} ms...`);
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
@@ -62,11 +69,11 @@ async function getBalanceCoins(axiosInstance, authorization) {
         if (response.status === 200) {
             return response.data.clickerUser.balanceCoins;
         } else {
-            console.error(`Get balance coins failed. Status code:`, response.status);
+            console.error(FgRed, `Get balance coins failed. Status code:`, response.status);
             return null;
         }
     } catch (error) {
-        console.error('Error:', error);
+        console.error(FgRed, 'Error:', error);
         return null;
     }
 }
@@ -86,7 +93,7 @@ async function buyUpgrades(axiosInstance, authorization) {
 
             for (const upgrade of upgrades) {
                 if (upgrade.cooldownSeconds > 0) {
-                    console.log(`Card ${upgrade.name} in cool down for ${upgrade.cooldownSeconds} seconds.`);
+                    console.log(FgYellow, `Card ${upgrade.name} in cool down for ${upgrade.cooldownSeconds} seconds.`);
                     continue;
                 }
 
@@ -103,13 +110,13 @@ async function buyUpgrades(axiosInstance, authorization) {
                             }
                         });
                         if (response.status === 200) {
-                            console.log(`(${Math.floor(balanceCoins)}) upgraded '${upgrade.name}' successfully.\n`);
+                            console.log(FgGreen, `(${Math.floor(balanceCoins)}) upgraded '${upgrade.name}' successfully.\n`);
                             purchased = true;
                             balanceCoins -= upgrade.price;
                         }
                     } catch (error) {
                         if (error.response && error.response.data && error.response.data.error_code === 'UPGRADE_COOLDOWN') {
-                            console.log(`Card ${upgrade.name} in cool down for ${error.response.data.cooldownSeconds} seconds.`);
+                            console.log(FgRed, `Card ${upgrade.name} in cool down for ${error.response.data.cooldownSeconds} seconds.`);
                             continue;
                         } else {
                             throw error;
@@ -120,15 +127,15 @@ async function buyUpgrades(axiosInstance, authorization) {
             }
 
             if (!purchased) {
-                console.log(`Token ${authorization.substring(0, 10)}... does not have available cards to upgrade. Try again...`);
+                console.log(FgMagenta, `Token ${authorization.substring(0, 10)}... does not have available cards to upgrade. Try again...`);
                 return false;
             }
         } else {
-            console.error('Can not get cards . Status code:', upgradesResponse.status);
+            console.error(FgRed, 'Can not get cards . Status code:', upgradesResponse.status);
             return false;
         }
     } catch (error) {
-        console.error('Error:', error);
+        console.error(FgRed, 'Error:', error);
         return false;
     }
     return true;
@@ -147,12 +154,12 @@ async function claimDailyCipher(axiosInstance, authorization, cipher) {
             });
 
             if (response.status === 200) {
-                console.log(`Claimed '${cipher}' successfully.`);
+                console.log(FgGreen, `Claimed '${cipher}' successfully.`);
             } else {
-                console.error('Can not claim cipher. Status code:', response.status);
+                console.error(FgRed, 'Can not claim cipher. Status code:', response.status);
             }
         } catch (error) {
-            console.error('Morse code was invalid. Error:', error);
+            console.error(FgRed, 'Morse code was invalid. Error:', error.toJSON().message);
         }
     }
 }
@@ -191,56 +198,9 @@ async function main() {
             const proxy = USE_PROXY ? proxyList[i % proxyList.length] : null;
             await runForAuthorization(authorization, proxy, cipher);
         }
-        console.log('Sleep 10 minutes...');
+        console.log(FgBlue, 'Sleep 10 minutes...');
         await new Promise(resolve => setTimeout(resolve, 1000 * 60 * 10));
     }
 }
 
 main();
-
-
-
-
-
-
-// fetch("https://api.hamsterkombat.io/clicker/upgrades-for-buy", {
-//     "headers": {
-//         "accept": "*/*",
-//         "accept-language": "vi,en;q=0.9,en-GB;q=0.8,en-US;q=0.7",
-//         "authorization": "Bearer 1717860303477QYWihTFFSkNnsHqVsXJeXt0BIyvobzbkGcxksz57golz8WY2Ezb2KqFTbnM0Bcgr5467596172",
-//         "sec-ch-ua": "\"Microsoft Edge\";v=\"125\", \"Chromium\";v=\"125\", \"Not.A/Brand\";v=\"24\"",
-//         "sec-ch-ua-mobile": "?0",
-//         "sec-ch-ua-platform": "\"Windows\"",
-//         "sec-fetch-dest": "empty",
-//         "sec-fetch-mode": "cors",
-//         "sec-fetch-site": "same-site",
-//         "sec-gpc": "1",
-//         "Referer": "https://hamsterkombat.io/",
-//         "Referrer-Policy": "strict-origin-when-cross-origin"
-//     },
-//     "body": null,
-//     "method": "POST"
-// });
-
-
-
-
-// fetch("https://api.hamsterkombat.io/clicker/buy-upgrade", {
-//     "headers": {
-//         "accept": "application/json",
-//         "accept-language": "vi,en;q=0.9,en-GB;q=0.8,en-US;q=0.7",
-//         "authorization": "Bearer 1717860303477QYWihTFFSkNnsHqVsXJeXt0BIyvobzbkGcxksz57golz8WY2Ezb2KqFTbnM0Bcgr5467596172",
-//         "content-type": "application/json",
-//         "sec-ch-ua": "\"Microsoft Edge\";v=\"125\", \"Chromium\";v=\"125\", \"Not.A/Brand\";v=\"24\"",
-//         "sec-ch-ua-mobile": "?0",
-//         "sec-ch-ua-platform": "\"Windows\"",
-//         "sec-fetch-dest": "empty",
-//         "sec-fetch-mode": "cors",
-//         "sec-fetch-site": "same-site",
-//         "sec-gpc": "1",
-//         "Referer": "https://hamsterkombat.io/",
-//         "Referrer-Policy": "strict-origin-when-cross-origin"
-//     },
-//     "body": "{\"upgradeId\":\"gamefi_tokens\",\"timestamp\":1718368570410}",
-//     "method": "POST"
-// });
